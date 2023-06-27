@@ -1,0 +1,27 @@
+{
+  "name": "my-prisma-project",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "prisma": "^4.16.1"
+  },
+  "dependencies": {
+    "@nexus/schema": "^0.20.1",
+    "@prisma/client": "^4.15.0",
+    "apollo-server": "^3.12.0",
+    "appolo": "^7.0.5",
+    "dataloader": "^2.2.2",
+    "jsonwebtoken": "^9.0.0",
+    "nexus": "^1.3.0",
+    "nodemon": "^2.0.22",
+    "server": "^1.0.38"
+  },
+  "description": ""
+}
