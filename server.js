@@ -1,13 +1,29 @@
-// Without JWT
-
 const { PrismaClient } = require('@prisma/client');
-const { queryType, mutationType, stringArg, makeSchema, objectType, nonNull, plugin, fieldAuthorizePlugin, intArg } = require('nexus');
-const { ApolloServer } = require('apollo-server');
+const { queryType, mutationType, stringArg, makeSchema, objectType, nonNull, intArg, fieldAuthorizePlugin } = require('nexus');
+const { ApolloServer, AuthenticationError } = require('apollo-server');
 const DataLoader = require('dataloader');
 const { setFields, setArrayFields } = require('./dataloader');
-// const jwt = require('jsonwebtoken');
+const jwt = require('jsonwebtoken');
 
 const prisma = new PrismaClient();
+
+
+
+const user = {
+    id: "5b85eced-fa40-4dc3-90b5-10885da55a6c", name: "cset", role: "cset"
+}
+
+const secretKey = 'yuvan_sankar_raja';
+const expiresIn = '10m'; 
+
+const generateToken = async(user) => {
+    const token = await jwt.sign(user, secretKey, { expiresIn });
+    console.log(token)
+    return token;
+};
+
+generateToken(user);
+
 
 const classRoomLoader = new DataLoader(async(ids) => {
     const classRooms = await prisma.classRoom.findMany({
@@ -30,6 +46,7 @@ const teacherLoader = new DataLoader(async(ids) => {
     });
     return setArrayFields(teachers, ids, "class_id");
 }, {cache: true});
+
 
 const studentLoader = new DataLoader(async(ids) => {
     const students = await prisma.student.findMany({
@@ -116,8 +133,16 @@ const query = queryType({
 
         t.list.field('manyStudent', {
             type: 'student',
-            resolve: () => {
-                return prisma.student.findMany();
+            args: {
+                class_id: nonNull(stringArg()),
+            },
+            authorize: async(_, args, context) =>await IsCrctTeacher(_, args, context),
+            resolve: (_, args) => {
+                return prisma.student.findMany({
+                    where: {
+                        class_id: args.class_id,
+                    },
+                });
             },
         });
     }
@@ -166,77 +191,87 @@ const mutation = mutationType({
                 email: nonNull(stringArg()),
                 roll_no: nonNull(intArg()),
                 class_id:nonNull(stringArg()),
-
             },
+            authorize: async(_, args, context) =>await IsCrctTeacher(_, args, context),
             resolve: async (_parent, args) => {
                 return prisma.student.create({
                     data: {
                         name: args.name,
-                        email: args.email,
                         roll_no: args.roll_no, 
-                        class_id: args.class_id,    
+                        class_id: args.class_id,  
+                        email: args.email,  
                     },
                 });
             },
         });
 
        
-            t.field('deleteStudent', {
-                type: 'student',
-                args: {
-                  id: nonNull(stringArg()),
-                  teacherId: nonNull(stringArg()),
-                },
-                resolve: async (_parent, args) => {
-                    // Clear the cache for the specified student
-                    studentLoader.clear(args.id);
-
-                  // Check if the teacher is associated with the student's class
-                  const teacher = await prisma.teacher.findUnique({
+        t.field('deleteStudent', {
+            type: 'student',
+            args: {
+                id: nonNull(stringArg()),
+                teacherId: nonNull(stringArg()),
+            },
+            resolve: async (_parent, args) => {
+                studentLoader.clear(args.id)
+                const teacher = await prisma.teacher.findUnique({
                     where: {
                       id: args.teacherId,
                     },
-                  });
-          
-                  if (!teacher) {
-                    throw new Error('Teacher not found');
-                  }
-          
-                  // Retrieve the student by ID
-                  const student = await prisma.student.findUnique({
+                });
+                if (!teacher) {
+                    throw new Error("Teacher doesn't exist");
+                }
+                const student = await prisma.student.findUnique({
                     where: {
                       id: args.id,
                     },
-                  });
-          
-                  if (!student) {
-                    throw new Error('Student not found');
-                  }
-          
-                  // Check if the teacher and student belong to the same class
-                  if (teacher.class_id !== student.class_id) {
-                    throw new Error('Teacher is not authorized to delete this student');
-                  }
-          
-                  // Delete the student
-                  await prisma.student.delete({
+                });
+                if (!student) {
+                    throw new Error("Student doesn't exist");
+                }
+                if (teacher.class_id !== student.class_id) {
+                    throw new Error("The teacher don't have access to delete this student");
+                }
+                await prisma.student.delete({
                     where: {
                       id: args.id,
                     },
-                  });
-          
-                  return student;
-                },
-        });
-            
-        
-          
-    }
+                });
+                return student;
+            },
+        });    
+    },
 });
+
+
+
+const IsCrctTeacher = async(_, args, context) => {
+    const token = context.req.headers.token;
+    console.log(token);
+    try {
+        const decoded = jwt.verify(token, secretKey);
+        console.log(decoded);
+        const id = decoded.id;
+        const teacher = await prisma.teacher.findUnique({
+            where: {
+                id: id,
+            },
+        });
+        console.log(teacher);
+        if(teacher.class_id == args.class_id){
+            return true;
+        }
+    } 
+    catch (error) {
+        throw new AuthenticationError("This teacher doesn't have access to this class");
+    }
+}
+
 
 const schema = makeSchema({
     types: [classRoom, teacher, student, query, mutation],
-    plugins : [fieldAuthorizePlugin()]
+    plugins: [fieldAuthorizePlugin()],
 });
 
 const server = new ApolloServer({ 
@@ -249,13 +284,8 @@ const server = new ApolloServer({
     studentLoader,
 });
 
-server.listen(8000, () => {
-    console.log("running on 8000");
+server.listen(7000, () => {
+    console.log("running on 7000");
 });
 
-// // Assuming you have the student ID you want to clear from the cache
-// const studentId = "your-student-id";
-
-// // Clear the cache for the specified student
-// studentLoader.clear(studentId);
 
