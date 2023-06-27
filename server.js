@@ -190,16 +190,17 @@ const mutation = mutationType({
                 name: nonNull(stringArg()),
                 email: nonNull(stringArg()),
                 roll_no: nonNull(intArg()),
-                class_id:nonNull(stringArg()),
+                
             },
             authorize: async(_, args, context) =>await IsCrctTeacher(_, args, context),
-            resolve: async (_parent, args) => {
+            resolve: async (_parent, args, context) => {
                 return prisma.student.create({
                     data: {
                         name: args.name,
                         roll_no: args.roll_no, 
-                        class_id: args.class_id,  
                         email: args.email,  
+                        class_id: await class_id(context), 
+                        
                     },
                 });
             },
@@ -244,7 +245,21 @@ const mutation = mutationType({
     },
 });
 
+const class_id = async(context) => {
+    const token = context.req.headers.token;
+    console.log(token);
+    const decoded = await jwt.verify(token, secretKey);
+    console.log(decoded);
+    const id = decoded.id;
+    const teacher = await prisma.teacher.findUnique({
+        where: {
+            id: id,
+        },
+    });
+    // console.log(teacher);
+    return teacher.class_id
 
+}
 
 const IsCrctTeacher = async(_, args, context) => {
     const token = context.req.headers.token;
@@ -258,8 +273,9 @@ const IsCrctTeacher = async(_, args, context) => {
                 id: id,
             },
         });
-        console.log(teacher);
-        if(teacher.class_id == args.class_id){
+        // console.log(teacher);
+        const Class= await class_id(context);
+        if(teacher.class_id == Class){
             return true;
         }
     } 
